@@ -203,6 +203,7 @@ void RosNode::OdometryCallback(const nav_msgs::Odometry::ConstPtr &msg) {
   state.vx = (double)msg->twist.twist.linear.x;
   state.vy = (double)msg->twist.twist.linear.y;
   state.w = (double)msg->twist.twist.angular.z;
+  printf("state.vx:%.2f state.vy %.2f state.w %.2f",state.vx,state.vy,state.w);
   OnDataCallback(MsgId::kOdomPose, state);
 }
 void RosNode::MapCallback(nav_msgs::OccupancyGrid::ConstPtr msg) {

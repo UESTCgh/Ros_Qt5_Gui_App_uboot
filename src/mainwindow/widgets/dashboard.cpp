@@ -32,6 +32,7 @@ void DashBoard::set_rpm(const int rpm) {
 void DashBoard::set_speed(const int speed) {
   _speed = speed;
   _rpm = speed;
+  // printf("%2.0f",_speed);
   update();
 }
 
@@ -49,21 +50,55 @@ void DashBoard::paintEvent(QPaintEvent* event) {
   this->resize(parent->size());
   QWidget::paintEvent(event);
 
-  int side = qMin(int(parent->width() / 1.8), parent->height());
-
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
-  painter.translate(parent->width() / 2, parent->height() / 2);
-  painter.scale(side / 200.0, side / 200.0);
-  painter.setPen(Qt::NoPen);
-  painter.setBrush(Qt::NoBrush);
+
+  // ===================== 绘制顶部两个图片 =====================
+  QPixmap pix1(QString::fromStdString("/home/xyc/ui/uboot_qt_pi/png/jcc.png"));
+  // QPixmap pix1(QString::fromStdString("/home/xyc/ui/uboot_qt_pi/png/yds.png"));
+  QPixmap pix2(QString::fromStdString("/home/xyc/ui/uboot_qt_pi/png/ft.png"));
+
+  // 获取中心点
+  int centerX = parent->width() / 2;
+  int centerY = 100;  // 顶部区域显示两个 logo，可以调整位置
+
+  // 缩放比例（控制显示大小）
+  qreal ft_scaleFactor = 0.08;
+  qreal jcc_scaleFactor = 0.2;
+  qreal yds_scaleFactor = 0.15;
+
+  // ================= 左侧图 =================
+  painter.save();
+  painter.translate(centerX - 120, centerY);  // 左移一点
+  painter.scale(yds_scaleFactor, yds_scaleFactor);
+  // painter.scale(jcc_scaleFactor, jcc_scaleFactor);
+  painter.drawPixmap(-pix1.width() / 2, -pix1.height() / 2, pix1);
+  painter.restore();
+
+
+
+  // ================= 右侧图 =================
+  painter.save();
+  painter.translate(centerX + 120, centerY);  // 右移一点
+  painter.scale(ft_scaleFactor, ft_scaleFactor);
+  painter.drawPixmap(-pix2.width() / 2, -pix2.height() / 2, pix2);
+  painter.restore();
+
+  // ===================== 绘制下方表盘 =====================
+  int side = qMin(int(parent->width() / 1.8), parent->height());
+
+  painter.save(); // 保存原始状态
+  painter.translate(parent->width() / 2, parent->height() * 0.65);  // 向下移动一点
+  painter.scale(side / 280.0, side / 280.0);
 
   draw_tachometer(painter);
-  draw_speedometer(painter);
-  draw_gear(painter);
-  draw_thermometer(painter);
-  draw_oil_meter(painter);
+  // draw_speedometer(painter);
+  // draw_gear(painter);
+  // draw_thermometer(painter);
+  // draw_oil_meter(painter);
+  painter.restore(); // 恢复状态
 }
+
 
 void DashBoard::draw_tachometer(QPainter& painter) {
   static QColor normal_color(18, 11, 10, 245);
@@ -147,25 +182,36 @@ void DashBoard::draw_tachometer(QPainter& painter) {
   painter.restore();
 }
 
+
 void DashBoard::draw_speedometer(QPainter& painter) {
   painter.save();
 
+  painter.translate(-60, 80);  // 左移60像素，竖直位置也略上移
+
+  // SPEED 标签
   painter.setPen(QColor(64, 64, 245));
-  painter.setFont(QFont("DejaVu Sans", 6, 50, true));
-  painter.drawText(QRect(80, 50, 70, 20), Qt::AlignCenter, "SPEED");
+  painter.setFont(QFont("DejaVu Sans", 5, 50, true));
+  QRect labelRect(-30, 0, 60, 16);  // 更小
+  painter.drawText(labelRect, Qt::AlignCenter, "SPEED");
 
+  // 速度值
   painter.setPen(QColor(26, 245, 245));
-  painter.setFont(QFont("DejaVu Sans", 24, 63, true));
-  painter.drawText(QRect(80, 50, 70, 50), Qt::AlignBottom | Qt::AlignLeft,
-                   QString("%0").arg(QString::number(_speed), 3, '0'));
+  painter.setFont(QFont("DejaVu Sans", 16, 60, true));  // 字体缩小
+  QRect valueRect(-30, 18, 60, 26);  // 更小
+  painter.drawText(valueRect, Qt::AlignCenter,
+                  QString("%1").arg(_speed, 3, '0'));
 
+  // 单位
   painter.setPen(QColor(26, 245, 245));
-  painter.setFont(QFont("DejaVu Sans", 8, 63, true));
-  painter.drawText(QRect(145, 75, 40, 20), Qt::AlignBottom | Qt::AlignLeft,
-                   "cm/s");
+  painter.setFont(QFont("DejaVu Sans", 7, 63, true));
+  QRect unitRect(28, 38, 30, 15);  // 与数字相对靠右下
+  painter.drawText(unitRect, Qt::AlignLeft | Qt::AlignBottom,
+                  "cm/s");
 
   painter.restore();
+
 }
+
 
 void DashBoard::draw_gear(QPainter& painter) {
   static QRect gear_rect(0, 0, 80, 80);

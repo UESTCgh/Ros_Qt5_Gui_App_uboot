@@ -10,6 +10,13 @@
 #include <fstream>
 #include "config/config_manager.h"
 #include "logger/logger.h"
+
+#include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/bool.hpp"
+
+#include <sensor_msgs/msg/compressed_image.hpp>
+#include <opencv2/imgcodecs.hpp>  // cv::imdecode
+
 rclcomm::rclcomm() {
   SET_DEFAULT_TOPIC_NAME("NavGoal", "/goal_pose")
   SET_DEFAULT_TOPIC_NAME("Reloc", "/initialpose")
@@ -25,11 +32,13 @@ rclcomm::rclcomm() {
   if (Config::ConfigManager::Instacnce()->GetRootConfig().images.empty()) {
     Config::ConfigManager::Instacnce()->GetRootConfig().images.push_back(
         Config::ImageDisplayConfig{.location = "front",
-                                   .topic = "/camera/front/image_raw",
+                                   .topic = "/yolo/result_image/compressed",
                                    .enable = true});
   }
   Config::ConfigManager::Instacnce()->StoreConfig();
 }
+
+//core
 bool rclcomm::Start() {
   rclcpp::init(0, nullptr);
   m_executor = new rclcpp::executors::MultiThreadedExecutor;
@@ -82,6 +91,49 @@ bool rclcomm::Start() {
           GET_TOPIC_NAME("Battery"), 1,
           std::bind(&rclcomm::BatteryCallback, this, std::placeholders::_1),
           sub1_obt);
+
+  //new sub
+  temperature_subscriber_ = node->create_subscription<std_msgs::msg::Float32>(
+      "/temp", 10,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        OnDataCallback(MsgId::kTemperature, msg->data);
+      }, sub1_obt);
+
+  humidity_subscriber_ = node->create_subscription<std_msgs::msg::Float32>(
+      "/hum", 10,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        OnDataCallback(MsgId::kHumidity, msg->data);
+      }, sub1_obt);
+
+  smoke_subscriber_ = node->create_subscription<std_msgs::msg::Bool>(
+      "/mq2", 10,
+      [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        OnDataCallback(MsgId::kSmokeDetected, msg->data);
+      }, sub1_obt);
+  
+  cpuT_subscriber_ = node->create_subscription<std_msgs::msg::Float32>(
+      "/cpuT", 10,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        OnDataCallback(MsgId::kCPU, msg->data);
+      }, sub1_obt);
+
+  npu_subscriber_ = node->create_subscription<std_msgs::msg::Float32>(
+      "/npu", 10,
+      [this](const std_msgs::msg::Float32::SharedPtr msg) {
+        OnDataCallback(MsgId::kNPU, msg->data);
+      }, sub1_obt);
+  // device_status_subscriber_ = node->create_subscription<sensor::msg::DeviceStatus>(
+  //     "/from_core", 10,
+  //     [this](const sensor::msg::DeviceStatus::SharedPtr msg) {
+  //       OnDataCallback(MsgId::kTemperature, msg->temperature);
+  //       OnDataCallback(MsgId::kHumidity, msg->humidity);
+  //       OnDataCallback(MsgId::kPresence, static_cast<bool>(msg->presence));
+  //       OnDataCallback(MsgId::kSmokeDetected, static_cast<bool>(msg->mq2));
+
+  //       // OnDataCallback(MsgId::kVal, msg->val);
+  //     }, sub1_obt);
+
+
   global_path_subscriber_ = node->create_subscription<nav_msgs::msg::Path>(
       GET_TOPIC_NAME("GlobalPlan"), 20,
       std::bind(&rclcomm::path_callback, this, std::placeholders::_1),
@@ -90,65 +142,107 @@ bool rclcomm::Start() {
       GET_TOPIC_NAME("LocalPlan"), 20,
       std::bind(&rclcomm::local_path_callback, this, std::placeholders::_1),
       sub1_obt);
-  odometry_subscriber_ = node->create_subscription<nav_msgs::msg::Odometry>(
-      GET_TOPIC_NAME("Odometry"), 20,
-      std::bind(&rclcomm::odom_callback, this, std::placeholders::_1),
-      sub1_obt);
-  for (auto one_image_display : Config::ConfigManager::Instacnce()->GetRootConfig().images) {
-    LOG_INFO("image location:" << one_image_display.location << "topic:" << one_image_display.topic);
-    image_subscriber_list_.emplace_back(
-        node->create_subscription<sensor_msgs::msg::Image>(
-            one_image_display.topic, 1, [this, one_image_display](const sensor_msgs::msg::Image::SharedPtr msg) {
-              cv::Mat conversion_mat_;
-              try {
-                // 深拷贝转换为opencv类型
-                cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(
-                    msg, sensor_msgs::image_encodings::RGB8);
-                conversion_mat_ = cv_ptr->image;
-              } catch (cv_bridge::Exception &e) {
-                try {
-                  cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg);
-                  if (msg->encoding == "CV_8UC3") {
-                    // assuming it is rgb
-                    conversion_mat_ = cv_ptr->image;
-                  } else if (msg->encoding == "8UC1") {
-                    // convert gray to rgb
-                    cv::cvtColor(cv_ptr->image, conversion_mat_, CV_GRAY2RGB);
-                  } else if (msg->encoding == "16UC1" ||
-                             msg->encoding == "32FC1") {
-                    double min = 0;
-                    double max = 10;
-                    if (msg->encoding == "16UC1") max *= 1000;
-                    // if (ui_.dynamic_range_check_box->isChecked()) {
-                    //   // dynamically adjust range based on min/max in image
-                    //   cv::minMaxLoc(cv_ptr->image, &min, &max);
-                    //   if (min == max) {
-                    //     // completely homogeneous images are displayed in gray
-                    //     min = 0;
-                    //     max = 2;
-                    //   }
-                    // }
-                    cv::Mat img_scaled_8u;
-                    cv::Mat(cv_ptr->image - min).convertTo(img_scaled_8u, CV_8UC1, 255. / (max - min));
-                    cv::cvtColor(img_scaled_8u, conversion_mat_, CV_GRAY2RGB);
-                  } else {
-                    LOG_ERROR("image from " << msg->encoding
-                                            << " to 'rgb8' an exception was thrown (%s)"
-                                            << e.what());
-                    return;
-                  }
-                } catch (cv_bridge::Exception &e) {
-                  LOG_ERROR(
-                      "image from "
-                      << msg->encoding
-                      << " to 'rgb8' an exception was thrown (%s)" << e.what());
+  // odometry_subscriber_ = node->create_subscription<nav_msgs::msg::Odometry>(
+  //     "GET_TOPIC_NAME("Odometry")", 20,
+  //     std::bind(&rclcomm::odom_callback, this, std::placeholders::_1),
+  //     sub1_obt);
 
-                  return;
-                }
-              }
-              OnDataCallback(MsgId::kImage, std::pair<std::string, cv::Mat>(one_image_display.location, conversion_mat_));
-            }));
+  odometry_subscriber_ = node->create_subscription<nav_msgs::msg::Odometry>(
+    "/odom_UI", 10,
+    std::bind(&rclcomm::odom_callback, this, std::placeholders::_1));
+  for (auto one_image_display : Config::ConfigManager::Instacnce()->GetRootConfig().images) {
+    LOG_INFO("image location:" << one_image_display.location
+            << " topic:" << one_image_display.topic);
+
+    // —— 改为订阅 CompressedImage —— //
+    rclcpp::QoS qos_profile(1);
+    qos_profile.best_effort().durability_volatile();
+    auto comp_sub = node->create_subscription<sensor_msgs::msg::CompressedImage>(
+        one_image_display.topic,  // 例如 "/yolo/result_image/compressed"
+        qos_profile,
+        [this, one_image_display](const sensor_msgs::msg::CompressedImage::SharedPtr msg) {
+          LOG_INFO("Received compressed image, format: " << msg->format);
+
+          try {
+            // 1. 将 vector<uint8_t> 数据包装到 cv::Mat 缓冲区
+            cv::Mat buf(1, msg->data.size(), CV_8UC1,
+                        const_cast<uint8_t*>(msg->data.data()));
+            
+            // 2. 解码为 BGR 彩色图
+            cv::Mat decoded = cv::imdecode(buf, cv::IMREAD_COLOR);
+            if (decoded.empty()) {
+              LOG_ERROR("CompressedImage 解码失败");
+              return;
+            }
+
+            LOG_INFO("Decoded image size: "
+                    << decoded.cols << "x" << decoded.rows);
+
+            cv::Mat rgb_image;
+            cv::cvtColor(decoded, rgb_image, cv::COLOR_BGR2RGB);
+
+            // 3. 回调到 GUI 层
+            using ImagePayload = std::pair<std::string, std::shared_ptr<cv::Mat>>;
+            OnDataCallback(MsgId::kImage,
+              std::make_any<ImagePayload>(
+                std::make_pair(one_image_display.location,
+                              std::make_shared<cv::Mat>(rgb_image))
+              )
+            );
+
+          } catch (const std::exception &e) {
+            LOG_ERROR("解码异常: " << e.what());
+          }
+        }
+    );
+
+    image_subscriber_list_.push_back(comp_sub);
   }
+  //   LOG_INFO("image location:" << one_image_display.location << "topic:" << one_image_display.topic);
+
+  //   image_subscriber_list_.emplace_back(
+  //       node->create_subscription<sensor_msgs::msg::Image>(
+  //           one_image_display.topic, 1,
+  //           [this, one_image_display](const sensor_msgs::msg::Image::SharedPtr msg) {
+  //             LOG_INFO("Received image. Encoding: " << msg->encoding);
+
+  //             if (msg->encoding != "rgb8" && msg->encoding != "bgr8") {
+  //               LOG_ERROR("Unsupported image encoding: " << msg->encoding);
+  //               return;
+  //             }
+
+  //             try {
+  //               cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvShare(msg, msg->encoding);
+  //               if (cv_ptr->image.empty()) {
+  //                 LOG_ERROR("cv_bridge: Image data is empty!");
+  //                 return;
+  //               }
+
+  //               cv::Mat display_image;
+  //               if (msg->encoding == "rgb8") {
+  //                 cv::cvtColor(cv_ptr->image, display_image, cv::COLOR_RGB2BGR);
+  //               } else {
+  //                 display_image = cv_ptr->image;
+  //               }
+
+  //               LOG_INFO("Image dimensions: " << display_image.cols << "x" << display_image.rows);
+
+  //                       // 显式声明类型为 std::pair<std::string, cv::Mat>
+  //               using ImagePayload = std::pair<std::string, std::shared_ptr<cv::Mat>>;
+  //               OnDataCallback(MsgId::kImage, std::make_any<ImagePayload>(
+  //                   std::make_pair(one_image_display.location, std::make_shared<cv::Mat>(display_image))));
+                
+  //             } catch (const cv_bridge::Exception &e) {
+  //               LOG_ERROR("cv_bridge conversion failed: " << e.what());
+  //             } catch (const std::exception &e) {
+  //               LOG_ERROR("Unexpected exception: " << e.what());
+  //             }
+  //           }
+  //           )
+  //       );
+
+
+  // }
 
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(node->get_clock());
   transform_listener_ =
@@ -160,6 +254,7 @@ bool rclcomm::Stop() {
   rclcpp::shutdown();
   return true;
 }
+
 void rclcomm::SendMessage(const MsgId &msg_id, const std::any &msg) {
   switch (msg_id) {
     case MsgId::kSetNavGoalPose: {
@@ -179,7 +274,7 @@ void rclcomm::SendMessage(const MsgId &msg_id, const std::any &msg) {
       auto speed = std::any_cast<basic::RobotSpeed>(msg);
       std::cout << "recv reloc pose:" << speed << std::endl;
       PubRobotSpeed(speed);
-
+      
     } break;
     default:
       break;
@@ -222,19 +317,22 @@ basic::RobotPose rclcomm::getTransform(std::string from, std::string to) {
     ret.theta = yaw;
 
   } catch (tf2::TransformException &ex) {
-    LOG_ERROR("getTransform error from:" << from << " to:" << to
-                                         << " error:" << ex.what());
+    // LOG_ERROR("getTransform error from:" << from << " to:" << to
+    //                                      << " error:" << ex.what());
   }
   return ret;
 }
 void rclcomm::odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
   basic::RobotState state;
+  // LOG_ERROR("11111111111");
+  // LOG_INFO("odom_callback received");
+
   state.vx = (double)msg->twist.twist.linear.x;
   state.vy = (double)msg->twist.twist.linear.y;
   state.w = (double)msg->twist.twist.angular.z;
   state.x = (double)msg->pose.pose.position.x;
   state.y = (double)msg->pose.pose.position.y;
-
+  // printf("state.vx:%.2f state.vy %.2f state.w %.2f \n",state.vx,state.vy,state.w);
   geometry_msgs::msg::Quaternion msg_quat = msg->pose.pose.orientation;
   // 转换类型
   tf2::Quaternion q;

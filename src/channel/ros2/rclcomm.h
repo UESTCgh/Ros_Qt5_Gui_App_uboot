@@ -29,6 +29,12 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "virtual_channel_node.h"
+
+#include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/bool.hpp"
+
+// #include <sensor/msg/device_status.hpp>
+
 class rclcomm : public VirtualChannelNode {
  public:
   rclcomm();
@@ -57,6 +63,7 @@ class rclcomm : public VirtualChannelNode {
   basic::RobotPose getTransform(std::string from, std::string to);
   void SendMessage(const MsgId &msg_id, const std::any &msg) override;
 
+
  private:
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr speed_publisher_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
@@ -75,7 +82,18 @@ class rclcomm : public VirtualChannelNode {
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_subscriber_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr local_path_subscriber_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr global_path_subscriber_;
-  std::vector<rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr> image_subscriber_list_;
+
+  //声明
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr temperature_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr humidity_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr smoke_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr cpuT_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr npu_subscriber_;
+//   rclcpp::Subscription<sensor::msg::DeviceStatus>::SharedPtr device_status_subscriber_;
+
+
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr> image_subscriber_list_;
+
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> transform_listener_;
   std::shared_ptr<rclcpp::Node> node;
@@ -87,6 +105,7 @@ class rclcomm : public VirtualChannelNode {
   std::atomic_bool init_flag_{false};
 
  private:
+
 };
 
 #endif  // RCLCOMM_H

@@ -77,6 +77,14 @@ class MainWindow : public QMainWindow {
   QLabel *label_power_;
   ads::CDockAreaWidget *center_docker_area_;
   std::map<std::string, RatioLayoutedFrame *> image_frame_map_;
+
+  QLabel *label_temp_;
+  QLabel *label_humid_;
+  QLabel *label_smoke_;
+  QLabel *label_cpu_;
+  QLabel *label_npu_;
+
+
  signals:
   void OnRecvChannelData(const MsgId &id, const std::any &data);
   
@@ -87,5 +95,8 @@ class MainWindow : public QMainWindow {
   void closeChannel();
   void registerChannel();
   void SaveState();
+
+  bool last_smoke_status_ = false;
+  QList<QMessageBox*> activeAlerts; // 存储活跃的警告窗口
 };
 #endif  // MAINWINDOW_H

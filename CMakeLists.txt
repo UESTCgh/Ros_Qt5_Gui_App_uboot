@@ -25,6 +25,9 @@ find_package(Qt5 COMPONENTS Core REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(Eigen3 REQUIRED)
 
+# set(sensor_DIR "/home/gh/work/fishbot/install/sensor/share/sensor/cmake")
+# find_package(sensor REQUIRED)
+
 # options
 option(BUILD_WITH_CHANNEL_AUTO ON)
 option(BUILD_WITH_CHANNEL_ROS1 OFF)

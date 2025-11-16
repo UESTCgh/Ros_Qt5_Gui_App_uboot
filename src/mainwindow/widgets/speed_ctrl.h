@@ -323,7 +323,7 @@ class SpeedCtrlWidget : public QWidget {
     horizontalSlider_raw_->setObjectName(
         QString::fromUtf8("horizontalSlider_raw_"));
     horizontalSlider_raw_->setMaximum(100);
-    horizontalSlider_raw_->setValue(10);
+    horizontalSlider_raw_->setValue(60);
     horizontalSlider_raw_->setOrientation(Qt::Horizontal);
 
     horizontalLayout_20->addWidget(horizontalSlider_raw_);
@@ -355,7 +355,7 @@ class SpeedCtrlWidget : public QWidget {
         QString::fromUtf8("horizontalSlider_linear_"));
     horizontalSlider_linear_->setMaximum(100);
     horizontalSlider_linear_->setSingleStep(1);
-    horizontalSlider_linear_->setValue(10);
+    horizontalSlider_linear_->setValue(20);
     horizontalSlider_linear_->setOrientation(Qt::Horizontal);
 
     horizontalLayout_21->addWidget(horizontalSlider_linear_);

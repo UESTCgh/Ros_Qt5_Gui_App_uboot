@@ -38,6 +38,10 @@ MainWindow::MainWindow(QWidget *parent)
   qRegisterMetaType<LaserScan>("LaserScan");
   qRegisterMetaType<RobotPath>("RobotPath");
   qRegisterMetaType<MsgId>("MsgId");
+
+  qRegisterMetaType<float>("float");
+  qRegisterMetaType<bool>("bool");
+
   qRegisterMetaType<std::any>("std::any");
   qRegisterMetaType<TopologyMap>("TopologyMap");
   qRegisterMetaType<TopologyMap::PointInfo>("TopologyMap::PointInfo");
@@ -65,6 +69,8 @@ void MainWindow::registerChannel() {
         emit OnRecvChannelData(id, data);
       }));
 }
+
+//recv
 void MainWindow::RecvChannelMsg(const MsgId &id, const std::any &data) {
   switch (id) {
     case MsgId::kOdomPose:
@@ -85,11 +91,83 @@ void MainWindow::RecvChannelMsg(const MsgId &id, const std::any &data) {
 
       this->SlotRecvImage(location_to_mat.first, location_to_mat.second);
     } break;
+    case MsgId::kTemperature: {
+      float temp = std::any_cast<float>(data);
+      label_temp_->setText("温度: " + QString::number(temp, 'f', 1) + " °C");
+    } break;
+    case MsgId::kHumidity: {
+      float humid = std::any_cast<float>(data);
+      label_humid_->setText("湿度: " + QString::number(humid, 'f', 1) + " %");
+    } break;
+    case MsgId::kSmokeDetected: {
+        bool current_smoke = std::any_cast<bool>(data);
+        
+        // 仅当状态变化时更新UI
+        if (current_smoke != last_smoke_status_) {
+            if (current_smoke) {
+                // 首次检测到烟雾 → 变红并保持
+                label_smoke_->setText("警报");
+                label_smoke_->setStyleSheet(
+                    "QLabel {"
+                    "   border-radius: 30px;"
+                    "   background: red;"
+                    "   color: white;"
+                    "   font-size: 16px;"
+                    "}"
+                );
+                 // 添加模态警告弹窗
+                QMessageBox *alert = new QMessageBox(this);
+                alert->setWindowTitle("安全警报");
+                alert->setText("⚠️ 检测到有害气体！请立即检查！！！");
+                alert->setIcon(QMessageBox::Critical);
+                alert->setStandardButtons(QMessageBox::Ok);
+                alert->setModal(true); // 模态对话框
+                
+                // 自动关闭设置（可选）
+                QTimer::singleShot(50000, alert, &QMessageBox::accept); // 10秒后自动关闭
+                
+                // 显示弹窗（非阻塞方式）
+                alert->show();
+                
+                // 记录弹窗指针以便后续管理（可选）
+                activeAlerts.append(alert);
+            } else {
+                // 明确无烟雾 → 变绿
+                label_smoke_->setText("正常");
+                label_smoke_->setStyleSheet(
+                    "QLabel {"
+                    "   border-radius: 30px;"
+                    "   background: green;"
+                    "   color: white;"
+                    "   font-size: 16px;"
+                    "}"
+                );
+                // 关闭所有相关警告
+                foreach(QMessageBox *alert, activeAlerts) {
+                    alert->close();
+                    alert->deleteLater();
+                }
+                activeAlerts.clear();
+            }
+            last_smoke_status_ = current_smoke;  // 更新状态记录
+        }
+    } break;
+    case MsgId::kCPU: {
+      float cpuT = std::any_cast<float>(data);
+      label_cpu_->setText("处理器: " + QString::number(cpuT, 'f', 1) + "°C");
+    } break;
+    case MsgId::kNPU: {
+      float npu = std::any_cast<float>(data);
+      label_npu_->setText("NPU: " + QString::number(npu, 'f', 1) + "%");
+    } break;
+
     default:
       break;
   }
   display_manager_->UpdateTopicData(id, data);
 }
+
+
 void MainWindow::SlotRecvImage(const std::string &location, std::shared_ptr<cv::Mat> data) {
   if (image_frame_map_.count(location)) {
     QImage image(data->data, data->cols, data->rows, data->step[0], QImage::Format_RGB888);
@@ -98,9 +176,13 @@ void MainWindow::SlotRecvImage(const std::string &location, std::shared_ptr<cv::
 }
 void MainWindow::SendChannelMsg(const MsgId &id, const std::any &data) {
   channel_manager_.SendMessage(id, data);
+
+  
 }
 void MainWindow::closeChannel() { channel_manager_.CloseChannel(); }
 MainWindow::~MainWindow() { delete ui; }
+
+
 void MainWindow::setupUi() {
   ui->setupUi(this);
   CDockManager::setConfigFlag(CDockManager::OpaqueSplitterResize, true);
@@ -120,7 +202,7 @@ void MainWindow::setupUi() {
   QHBoxLayout *horizontalLayout_tools = new QHBoxLayout();
   horizontalLayout_tools->setSpacing(0);
   horizontalLayout_tools->setObjectName(
-      QString::fromUtf8(" horizontalLayout_tools"));
+  QString::fromUtf8(" horizontalLayout_tools"));
 
   QToolButton *reloc_btn = new QToolButton();
   reloc_btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -239,24 +321,84 @@ void MainWindow::setupUi() {
 
   battery_bar_->setAlignment(Qt::AlignBottom | Qt::AlignHCenter);
 
-  horizontalLayout_tools->addWidget(battery_bar_);
-
+  // 电量图标
   QLabel *label_11 = new QLabel();
-  label_11->setObjectName(QString::fromUtf8("label_11"));
-  label_11->setMinimumSize(QSize(32, 32));
-  label_11->setMaximumSize(QSize(32, 32));
-  label_11->setPixmap(QPixmap(QString::fromUtf8(":/images/power-v.png")));
+  // label_11->setFixedSize(24, 24);  // 设置图标大小
+  // label_11->setPixmap(QPixmap(":/images/power-v.png").scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  // label_11->setAlignment(Qt::AlignCenter);
 
-  horizontalLayout_tools->addWidget(label_11);
+  // 设置统一字体
+  QFont labelFont;
+  labelFont.setPointSize(10);
 
-  label_power_ = new QLabel();
-  label_power_->setObjectName(QString::fromUtf8("label_power_"));
-  label_power_->setMinimumSize(QSize(50, 32));
-  label_power_->setMaximumSize(QSize(50, 32));
-  label_power_->setStyleSheet(QString::fromUtf8(""));
+  // 电压显示
+  label_power_ = new QLabel("NPU:");
+  // label_power_->setMinimumSize(QSize(50, 32));
+  label_power_->setFont(labelFont);
+  label_power_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
 
-  horizontalLayout_tools->addWidget(label_power_);
-  SlotSetBatteryStatus(0, 0);
+  label_smoke_ = new QLabel("有害气体");
+  label_smoke_->setFont(labelFont);
+  label_smoke_->setAlignment(Qt::AlignCenter);  // 文字居中
+  label_smoke_->setFixedSize(60, 60);          // 固定大小（圆形需宽高一致）
+  label_smoke_->setStyleSheet(
+      "QLabel {"
+      "   border-radius: 30px;"      // 圆形（半径=高度/2）
+      "   background: gray;"         // 默认灰色
+      "   color: white;"             // 文字颜色
+      "   font-weight: bold;"        // 加粗字体
+      "}"
+  );
+
+  // 温湿度标签
+  label_temp_ = new QLabel("温度: -- °C");
+  label_temp_->setFont(labelFont);
+
+  label_humid_ = new QLabel("湿度: -- %");
+  label_humid_->setFont(labelFont);
+
+
+  label_cpu_ = new QLabel("处理器: -- °C");
+  label_cpu_->setFont(labelFont);
+
+  label_npu_ = new QLabel("NPU: -- %");
+  label_cpu_->setFont(labelFont);
+
+
+  // --- 环境信息组合 ---
+  QHBoxLayout *env_layout = new QHBoxLayout();
+  env_layout->setSpacing(15);
+  env_layout->addWidget(label_smoke_);
+  env_layout->setSpacing(15);
+  env_layout->addWidget(label_temp_);
+  env_layout->setSpacing(15);
+  env_layout->addWidget(label_humid_);
+  // env_layout->setSpacing(15);
+  // env_layout->addWidget(label_cpu_);
+  // env_layout->setSpacing(15);
+  // env_layout->addWidget(label_npu_);
+
+  // --- 电量信息组合 ---
+  // QHBoxLayout *power_layout = new QHBoxLayout();
+  // power_layout->setSpacing(5);
+  
+  // power_layout->addWidget(label_11);
+  
+  // power_layout->addWidget(label_power_);
+  // power_layout->addWidget(battery_bar_);
+
+  // --- 总右侧组合 ---
+  QHBoxLayout *right_info_layout = new QHBoxLayout();
+  right_info_layout->setSpacing(10);
+  right_info_layout->setAlignment(Qt::AlignRight);  // 整体靠右
+  right_info_layout->addLayout(env_layout);
+  // right_info_layout->addLayout(power_layout);
+
+  // 添加到工具栏右侧
+  horizontalLayout_tools->addStretch();  // 左侧占满空间
+  horizontalLayout_tools->addLayout(right_info_layout);
+
+
   //////////////////////////////////////////////////////////////编辑地图工具栏
   QWidget *tools_edit_map_widget = new QWidget();
 
@@ -705,6 +847,8 @@ void MainWindow::RestoreState() {
   dock_manager_->loadPerspectives(settings);
   dock_manager_->openPerspective("history");
 }
+
+
 void MainWindow::updateOdomInfo(RobotState state) {
   // 转向灯
   //   if (state.w > 0.1) {
@@ -721,13 +865,20 @@ void MainWindow::updateOdomInfo(RobotState state) {
   //   }
   //   // 仪表盘
   speed_dash_board_->set_speed(abs(state.vx * 100));
-  if (state.vx > 0.001) {
-    speed_dash_board_->set_gear(DashBoard::kGear_D);
-  } else if (state.vx < -0.001) {
-    speed_dash_board_->set_gear(DashBoard::kGear_R);
-  } else {
-    speed_dash_board_->set_gear(DashBoard::kGear_N);
-  }
+  // printf("state.vx:%.2f\n",state.vx);
+  // printf("state.vy:%.2f\n",state.vy);
+  // printf("state.x:%.2f\n",state.x);
+  // printf("state.y:%.2f\n",state.y);
+  // if (state.vx > 0.001) {
+  //   speed_dash_board_->set_gear(DashBoard::kGear_D);
+  // } else if (state.vx < -0.001) {
+  //   speed_dash_board_->set_gear(DashBoard::kGear_R);
+  // } else {
+  //   speed_dash_board_->set_gear(DashBoard::kGear_N);
+  // }
+  // 新增：在 UI 上显示线速度 vx
+  // QString speed_text = QString("线速度: %1 m/s").arg(state.vx, 0, 'f', 2);
+  // ui->label_linear_speed->setText(speed_text);
   //   QString number = QString::number(abs(state.vx * 100)).mid(0, 2);
   //   if (number[1] == ".") {
   //     number = number.mid(0, 1);
@@ -740,5 +891,5 @@ void MainWindow::updateOdomInfo(RobotState state) {
 }
 void MainWindow::SlotSetBatteryStatus(double percent, double voltage) {
   battery_bar_->setValue(percent);
-  label_power_->setText(QString::number(voltage, 'f', 2) + "V");
+  label_power_->setText(QString::number(percent, 'f', 2) + "%");
 }
