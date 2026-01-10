@@ -38,6 +38,10 @@ MainWindow::MainWindow(QWidget *parent)
   qRegisterMetaType<LaserScan>("LaserScan");
   qRegisterMetaType<RobotPath>("RobotPath");
   qRegisterMetaType<MsgId>("MsgId");
+
+  qRegisterMetaType<float>("float");
+  qRegisterMetaType<bool>("bool");
+
   qRegisterMetaType<std::any>("std::any");
   qRegisterMetaType<TopologyMap>("TopologyMap");
   qRegisterMetaType<TopologyMap::PointInfo>("TopologyMap::PointInfo");
@@ -65,6 +69,8 @@ void MainWindow::registerChannel() {
         emit OnRecvChannelData(id, data);
       }));
 }
+
+//recv
 void MainWindow::RecvChannelMsg(const MsgId &id, const std::any &data) {
   switch (id) {
     case MsgId::kOdomPose:
@@ -85,11 +91,30 @@ void MainWindow::RecvChannelMsg(const MsgId &id, const std::any &data) {
 
       this->SlotRecvImage(location_to_mat.first, location_to_mat.second);
     } break;
+    case MsgId::kTemperature: {
+      float temp = std::any_cast<float>(data);
+      label_temp_->setText("温度: " + QString::number(temp, 'f', 1) + " °C");
+    } break;
+    case MsgId::kHumidity: {
+      float humid = std::any_cast<float>(data);
+      label_humid_->setText("湿度: " + QString::number(humid, 'f', 1) + " %");
+    } break;
+    case MsgId::kSmokeDetected: {
+      bool smoke = std::any_cast<bool>(data);
+      label_smoke_->setText(smoke ? "烟雾: 否" : "烟雾: 是");
+    } break;
+    case MsgId::kPresence: {
+      bool presence = std::any_cast<bool>(data);
+      label_people_->setText(presence ? "有人: 是" : "有人: 否");
+    } break;
+
     default:
       break;
   }
   display_manager_->UpdateTopicData(id, data);
 }
+
+
 void MainWindow::SlotRecvImage(const std::string &location, std::shared_ptr<cv::Mat> data) {
   if (image_frame_map_.count(location)) {
     QImage image(data->data, data->cols, data->rows, data->step[0], QImage::Format_RGB888);
@@ -101,6 +126,8 @@ void MainWindow::SendChannelMsg(const MsgId &id, const std::any &data) {
 }
 void MainWindow::closeChannel() { channel_manager_.CloseChannel(); }
 MainWindow::~MainWindow() { delete ui; }
+
+
 void MainWindow::setupUi() {
   ui->setupUi(this);
   CDockManager::setConfigFlag(CDockManager::OpaqueSplitterResize, true);
@@ -120,7 +147,7 @@ void MainWindow::setupUi() {
   QHBoxLayout *horizontalLayout_tools = new QHBoxLayout();
   horizontalLayout_tools->setSpacing(0);
   horizontalLayout_tools->setObjectName(
-      QString::fromUtf8(" horizontalLayout_tools"));
+  QString::fromUtf8(" horizontalLayout_tools"));
 
   QToolButton *reloc_btn = new QToolButton();
   reloc_btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
@@ -239,24 +266,63 @@ void MainWindow::setupUi() {
 
   battery_bar_->setAlignment(Qt::AlignBottom | Qt::AlignHCenter);
 
-  horizontalLayout_tools->addWidget(battery_bar_);
-
+  // 电量图标
   QLabel *label_11 = new QLabel();
-  label_11->setObjectName(QString::fromUtf8("label_11"));
-  label_11->setMinimumSize(QSize(32, 32));
-  label_11->setMaximumSize(QSize(32, 32));
-  label_11->setPixmap(QPixmap(QString::fromUtf8(":/images/power-v.png")));
+  label_11->setFixedSize(24, 24);  // 设置图标大小
+  label_11->setPixmap(QPixmap(":/images/power-v.png").scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  label_11->setAlignment(Qt::AlignCenter);
 
-  horizontalLayout_tools->addWidget(label_11);
+  // 设置统一字体
+  QFont labelFont;
+  labelFont.setPointSize(10);
 
-  label_power_ = new QLabel();
-  label_power_->setObjectName(QString::fromUtf8("label_power_"));
+  // 电压显示
+  label_power_ = new QLabel("0.0V");
   label_power_->setMinimumSize(QSize(50, 32));
-  label_power_->setMaximumSize(QSize(50, 32));
-  label_power_->setStyleSheet(QString::fromUtf8(""));
+  label_power_->setFont(labelFont);
+  label_power_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
 
-  horizontalLayout_tools->addWidget(label_power_);
-  SlotSetBatteryStatus(0, 0);
+  // 温湿度标签
+  label_temp_ = new QLabel("温度: -- °C");
+  label_temp_->setFont(labelFont);
+
+  label_humid_ = new QLabel("湿度: -- %");
+  label_humid_->setFont(labelFont);
+
+  label_smoke_ = new QLabel("烟雾: --");
+  label_smoke_->setFont(labelFont);
+
+  label_people_ = new QLabel("有人: --");
+  label_people_->setFont(labelFont);
+
+
+  // --- 环境信息组合 ---
+  QHBoxLayout *env_layout = new QHBoxLayout();
+  env_layout->setSpacing(15);
+  env_layout->addWidget(label_temp_);
+  env_layout->addWidget(label_humid_);
+  env_layout->addWidget(label_smoke_);
+  env_layout->addWidget(label_people_);
+
+  // --- 电量信息组合 ---
+  QHBoxLayout *power_layout = new QHBoxLayout();
+  power_layout->setSpacing(5);
+  power_layout->addWidget(battery_bar_);
+  power_layout->addWidget(label_11);
+  power_layout->addWidget(label_power_);
+
+  // --- 总右侧组合 ---
+  QHBoxLayout *right_info_layout = new QHBoxLayout();
+  right_info_layout->setSpacing(30);
+  right_info_layout->setAlignment(Qt::AlignRight);  // 整体靠右
+  right_info_layout->addLayout(env_layout);
+  right_info_layout->addLayout(power_layout);
+
+  // 添加到工具栏右侧
+  horizontalLayout_tools->addStretch();  // 左侧占满空间
+  horizontalLayout_tools->addLayout(right_info_layout);
+
+
   //////////////////////////////////////////////////////////////编辑地图工具栏
   QWidget *tools_edit_map_widget = new QWidget();
 

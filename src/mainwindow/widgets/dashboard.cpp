@@ -59,9 +59,9 @@ void DashBoard::paintEvent(QPaintEvent* event) {
   painter.setBrush(Qt::NoBrush);
 
   draw_tachometer(painter);
-  draw_speedometer(painter);
-  draw_gear(painter);
-  draw_thermometer(painter);
+  // draw_speedometer(painter);
+  // draw_gear(painter);
+  // draw_thermometer(painter);
   draw_oil_meter(painter);
 }
 

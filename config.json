@@ -1,0 +1,92 @@
+{
+  "display_config": [
+    {
+      "display_name": "NavGoal",
+      "topic": "/goal_pose",
+      "enable": true
+    },
+    {
+      "display_name": "Reloc",
+      "topic": "/initialpose",
+      "enable": true
+    },
+    {
+      "display_name": "Map",
+      "topic": "/map",
+      "enable": true
+    },
+    {
+      "display_name": "LocalCostMap",
+      "topic": "/local_costmap/costmap",
+      "enable": true
+    },
+    {
+      "display_name": "GlobalCostMap",
+      "topic": "/global_costmap/costmap",
+      "enable": true
+    },
+    {
+      "display_name": "LaserScan",
+      "topic": "/scan",
+      "enable": true
+    },
+    {
+      "display_name": "GlobalPlan",
+      "topic": "/plan",
+      "enable": true
+    },
+    {
+      "display_name": "LocalPlan",
+      "topic": "/local_plan",
+      "enable": true
+    },
+    {
+      "display_name": "Odometry",
+      "topic": "/odom",
+      "enable": true
+    },
+    {
+      "display_name": "Speed",
+      "topic": "/cmd_vel",
+      "enable": true
+    },
+    {
+      "display_name": "Battery",
+      "topic": "/battery",
+      "enable": true
+    }
+  ],
+  "images": [
+    {
+      "location": "front",
+      "topic": "/yolo/result_image/compressed",
+      "enable": true
+    }
+  ],
+  "topology_map_config": {
+    "map_name": "./default_topology_map.json"
+  },
+  "robot_shape_config": {
+    "shaped_points": [
+      {
+        "x": 0.5,
+        "y": 0.5
+      },
+      {
+        "x": 0.5,
+        "y": -0.5
+      },
+      {
+        "x": -0.5,
+        "y": -0.5
+      },
+      {
+        "x": -0.5,
+        "y": 0.5
+      }
+    ],
+    "is_ellipse": false,
+    "color": "0x00000FF",
+    "opacity": 0.5
+  }
+}
